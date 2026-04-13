@@ -1,69 +1,72 @@
 import streamlit as st
 import PyPDF2
 import re
-from io import BytesIO
 
-# CONFIGURAÇÃO DA PÁGINA
-st.set_page_config(
-    page_title="Leitor de Conta de Luz",
-    page_icon="⚡",
-    layout="centered"
-)
+st.set_page_config(page_title="Analisador de Conta de Luz")
 
-st.title("⚡ Leitor de Conta de Energia PDF")
-st.write("Faça upload de uma conta de luz em PDF para localizar o consumo em kWh.")
+st.title("⚡ Análise de Conta de Energia")
 
-# FUNÇÃO PARA EXTRAIR TEXTO DO PDF
-def extrair_texto_pdf(pdf_file):
+arquivo = st.file_uploader("Envie sua conta em PDF", type="pdf")
+
+
+def extrair_texto(pdf):
+    leitor = PyPDF2.PdfReader(pdf)
     texto = ""
 
-    try:
-        leitor = PyPDF2.PdfReader(pdf_file)
+    for pagina in leitor.pages:
+        texto += pagina.extract_text()
 
-        for pagina in leitor.pages:
-            texto += pagina.extract_text() + "\n"
-
-        return texto
-
-    except Exception as e:
-        st.error(f"Erro ao ler PDF: {e}")
-        return None
+    return texto
 
 
-# UPLOAD
-arquivo = st.file_uploader(
-    "Selecione o PDF da conta de energia",
-    type=["pdf"]
-)
+if arquivo:
 
-if arquivo is not None:
+    texto = extrair_texto(arquivo)
 
-    st.success("PDF enviado com sucesso!")
+    st.subheader("Texto Extraído:")
+    st.text_area("", texto, height=300)
 
-    texto_pdf = extrair_texto_pdf(arquivo)
+    numeros = re.findall(r'\d+[.,]?\d*', texto)
 
-    if texto_pdf:
+    numeros_limpos = []
 
-        st.subheader("Texto Extraído:")
-        st.text_area("", texto_pdf, height=300)
+    for num in numeros:
+        try:
+            numeros_limpos.append(float(num.replace(",", ".")))
+        except:
+            pass
 
-        # BUSCAR KWH
-        if "kWh" in texto_pdf or "KWH" in texto_pdf or "kwh" in texto_pdf:
+    consumos = [n for n in numeros_limpos if 50 <= n <= 1000]
 
-            st.success("✅ Palavra 'kWh' encontrada no documento!")
+    if consumos:
 
-            # Regex para encontrar valores próximos de kWh
-            padrao = r'(\d+[.,]?\d*)\s*kWh'
-            resultados = re.findall(padrao, texto_pdf, re.IGNORECASE)
+        st.success("Consumos encontrados!")
 
-            if resultados:
-                st.subheader("🔍 Possíveis consumos encontrados:")
+        st.subheader("📊 Histórico de Consumo:")
 
-                for i, valor in enumerate(resultados):
-                    st.write(f"Consumo {i+1}: **{valor} kWh**")
+        for i, consumo in enumerate(consumos[:12]):
+            st.write(f"Mês {i+1}: {consumo} kWh")
 
-            else:
-                st.warning("Palavra encontrada, mas nenhum valor associado detectado.")
+        media = sum(consumos[:12]) / len(consumos[:12])
+
+        st.subheader("📈 Média de Consumo")
+
+        st.metric("Média Mensal", f"{media:.2f} kWh")
+
+        st.subheader("💰 Estudo de Economia")
+
+        economia_10 = media * 0.10
+        economia_20 = media * 0.20
+
+        st.write(f"Reduzindo 10% do consumo: **{economia_10:.2f} kWh/mês**")
+        st.write(f"Reduzindo 20% do consumo: **{economia_20:.2f} kWh/mês**")
+
+        if media > 300:
+            st.warning("⚠ Consumo elevado detectado.")
+            st.write("Sugestão: avaliar troca para iluminação LED e revisar ar-condicionado.")
 
         else:
-            st.error("❌ Palavra 'kWh' não encontrada no PDF.")
+            st.success("✅ Seu consumo está dentro de uma faixa razoável.")
+
+    else:
+        st.error("Nenhum consumo identificado.")
